@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getAllProtocols } from "../../../../config/protocols";
-import { calculateRisk } from "../../../../engine/riskEngine";
-import { chooseBestProtocol } from "../../../../engine/allocationEngine";
-import { executeRebalance } from "../../../../engine/executionEngine";
+import { getAllProtocols } from "../../../config/protocols";
+import { calculateRisk } from "../../../engine/riskEngine";
+import { chooseBestProtocol } from "../../../engine/allocationEngine";
+import { executeRebalance } from "../../../engine/executionEngine";
 
 export async function GET() {
   const protocols = await getAllProtocols();
