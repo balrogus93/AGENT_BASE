@@ -1,5 +1,5 @@
-import { getAaveData } from "@/protocols/aave";
-import { getMorphoData } from "@/protocols/morpho";
+import { getAaveData } from "../protocols/aave";
+import { getMorphoData } from "../protocols/morpho";
 
 export async function getAllProtocols() {
   const aave = await getAaveData();
