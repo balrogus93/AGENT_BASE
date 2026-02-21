@@ -1,4 +1,4 @@
-import { sendTransaction } from "@/lib/wallet";
+import { sendTransaction } from "../lib/wallet";
 
 export async function executeRebalance(from: any, to: any) {
   console.log(`Rebalancing from ${from.name} to ${to.name}`);
