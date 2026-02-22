@@ -4,9 +4,17 @@ const nextConfig = {
     serverComponentsExternalPackages: [
       "@neondatabase/serverless",
       "@coinbase/cdp-sdk",
+      "jose",
     ],
   },
-  webpack: (config) => {
+  transpilePackages: ["@coinbase/cdp-sdk"],
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        "jose": "jose",
+      });
+    }
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -18,4 +26,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
