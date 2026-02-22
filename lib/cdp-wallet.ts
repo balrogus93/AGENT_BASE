@@ -1,19 +1,5 @@
-import { CdpClient } from "@coinbase/cdp-sdk";
 import { createPublicClient, http, parseEther } from "viem";
-import { baseSepolia, base } from "viem/chains";
-
-let cdpClient: CdpClient | null = null;
-
-export function getCdpClient(): CdpClient {
-  if (!cdpClient) {
-    cdpClient = new CdpClient({
-      apiKeyId: process.env.CDP_API_KEY_ID!,
-      apiKeySecret: process.env.CDP_API_KEY_SECRET!,
-      walletSecret: process.env.CDP_WALLET_SECRET!,
-    });
-  }
-  return cdpClient;
-}
+import { baseSepolia } from "viem/chains";
 
 export const publicClient = createPublicClient({
   chain: baseSepolia,
@@ -32,8 +18,18 @@ export interface TransactionResult {
   error?: string;
 }
 
+// Helper pour créer le client CDP dynamiquement
+async function getCdpClient() {
+  const { CdpClient } = await import("@coinbase/cdp-sdk");
+  return new CdpClient({
+    apiKeyId: process.env.CDP_API_KEY_ID!,
+    apiKeySecret: process.env.CDP_API_KEY_SECRET!,
+    walletSecret: process.env.CDP_WALLET_SECRET!,
+  });
+}
+
 export async function createEvmAccount(name?: string): Promise<WalletAccount> {
-  const cdp = getCdpClient();
+  const cdp = await getCdpClient();
   const accountName = name || `agent-wallet-${Date.now()}`;
 
   const account = await cdp.evm.createAccount({
@@ -48,7 +44,7 @@ export async function createEvmAccount(name?: string): Promise<WalletAccount> {
 }
 
 export async function getOrCreateAccount(name: string): Promise<WalletAccount> {
-  const cdp = getCdpClient();
+  const cdp = await getCdpClient();
 
   const account = await cdp.evm.getOrCreateAccount({
     name,
@@ -73,7 +69,7 @@ export async function requestFaucet(
   token: "eth" | "usdc" = "eth"
 ): Promise<TransactionResult> {
   try {
-    const cdp = getCdpClient();
+    const cdp = await getCdpClient();
 
     const { transactionHash } = await cdp.evm.requestFaucet({
       address: address as `0x${string}`,
@@ -98,7 +94,7 @@ export async function sendTransaction(params: {
   network?: string;
 }): Promise<TransactionResult> {
   try {
-    const cdp = getCdpClient();
+    const cdp = await getCdpClient();
 
     const { transactionHash } = await cdp.evm.sendTransaction({
       address: params.fromAddress as `0x${string}`,

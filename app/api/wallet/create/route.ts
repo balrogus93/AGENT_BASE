@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
-import { CdpClient } from "@coinbase/cdp-sdk";
 import { query } from "@/lib/db";
-
-const cdp = new CdpClient({
-  apiKeyId: process.env.CDP_API_KEY_ID!,
-  apiKeySecret: process.env.CDP_API_KEY_SECRET!,
-  walletSecret: process.env.CDP_WALLET_SECRET!,
-});
 
 export async function POST(request: Request) {
   try {
+    // Vérifier que les variables d'environnement sont présentes
+    if (!process.env.CDP_API_KEY_ID || !process.env.CDP_API_KEY_SECRET || !process.env.CDP_WALLET_SECRET) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "CDP credentials not configured. Please set CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET in Vercel environment variables." 
+        },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const accountName = body.name || `agent-wallet-${Date.now()}`;
+
+    // Import dynamique pour éviter l'initialisation au build
+    const { CdpClient } = await import("@coinbase/cdp-sdk");
+    
+    const cdp = new CdpClient({
+      apiKeyId: process.env.CDP_API_KEY_ID,
+      apiKeySecret: process.env.CDP_API_KEY_SECRET,
+      walletSecret: process.env.CDP_WALLET_SECRET,
+    });
 
     const account = await cdp.evm.createAccount({
       name: accountName,
@@ -44,6 +57,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
+    // D'abord vérifier si un wallet existe déjà
     const existing = await query(
       "SELECT * FROM wallet_accounts WHERE account_type = 'evm' ORDER BY created_at DESC LIMIT 1"
     );
@@ -55,6 +69,26 @@ export async function GET() {
         message: "Existing account retrieved",
       });
     }
+
+    // Vérifier les credentials avant de créer
+    if (!process.env.CDP_API_KEY_ID || !process.env.CDP_API_KEY_SECRET || !process.env.CDP_WALLET_SECRET) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "CDP credentials not configured. Please set environment variables in Vercel." 
+        },
+        { status: 500 }
+      );
+    }
+
+    // Import dynamique
+    const { CdpClient } = await import("@coinbase/cdp-sdk");
+    
+    const cdp = new CdpClient({
+      apiKeyId: process.env.CDP_API_KEY_ID,
+      apiKeySecret: process.env.CDP_API_KEY_SECRET,
+      walletSecret: process.env.CDP_WALLET_SECRET,
+    });
 
     const accountName = `agent-wallet-${Date.now()}`;
     const account = await cdp.evm.createAccount({
