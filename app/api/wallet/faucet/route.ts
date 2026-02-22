@@ -15,14 +15,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Request funds from faucet
     const result = await requestFaucet(address, token);
 
     if (result.success) {
-      // Get new balance
       const balance = await getWalletBalance(address);
 
-      // Log to database
       await query(
         `INSERT INTO faucet_requests (address, token, tx_hash, created_at) 
          VALUES ($1, $2, $3, NOW())`,
@@ -43,7 +40,6 @@ export async function POST(request: Request) {
     );
   } catch (error: any) {
     console.error("Faucet error:", error);
-
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

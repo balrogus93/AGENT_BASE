@@ -2,7 +2,6 @@ import { neon } from "@neondatabase/serverless";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-// Base query function
 export async function query(text: string, params?: any[]) {
   if (params) {
     return await sql(text, params);
@@ -10,7 +9,6 @@ export async function query(text: string, params?: any[]) {
   return await sql(text);
 }
 
-// Log an action to the database
 export async function logAction(
   action: string,
   details: Record<string, any>
@@ -22,20 +20,16 @@ export async function logAction(
       [action, JSON.stringify(details)]
     );
   } catch (error) {
-    // If table doesn't exist, log to console
     console.log(`[Action] ${action}:`, details);
   }
 }
 
-// Save portfolio snapshot
-export async function savePortfolioSnapshot(
-  portfolio: {
-    totalValue: number;
-    allocations: any[];
-    expectedApy: number;
-    totalRisk: number;
-  }
-): Promise<void> {
+export async function savePortfolioSnapshot(portfolio: {
+  totalValue: number;
+  allocations: any[];
+  expectedApy: number;
+  totalRisk: number;
+}): Promise<void> {
   try {
     await query(
       `INSERT INTO portfolio_snapshots (total_value, allocations, expected_apy, total_risk, created_at)
@@ -52,7 +46,6 @@ export async function savePortfolioSnapshot(
   }
 }
 
-// Get latest portfolio
 export async function getLatestPortfolio(): Promise<{
   totalValue: number;
   allocations: any[];
@@ -62,7 +55,7 @@ export async function getLatestPortfolio(): Promise<{
 } | null> {
   try {
     const result = await query(
-      `SELECT * FROM portfolio_snapshots ORDER BY created_at DESC LIMIT 1`
+      "SELECT * FROM portfolio_snapshots ORDER BY created_at DESC LIMIT 1"
     );
 
     if (result.length === 0) return null;
@@ -77,47 +70,6 @@ export async function getLatestPortfolio(): Promise<{
   } catch (error) {
     console.error("[DB] Failed to get portfolio:", error);
     return null;
-  }
-}
-
-// Save protocol snapshot (for historical tracking)
-export async function saveProtocolSnapshot(
-  protocol: {
-    name: string;
-    apy: number;
-    tvl: number;
-    risk: number;
-    adjustedYield: number;
-  }
-): Promise<void> {
-  try {
-    await query(
-      `INSERT INTO protocol_snapshots (protocol_name, apy, tvl, risk_score, adjusted_yield, snapshot_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [protocol.name, protocol.apy, protocol.tvl, protocol.risk, protocol.adjustedYield]
-    );
-  } catch (error) {
-    console.error("[DB] Failed to save protocol snapshot:", error);
-  }
-}
-
-// Get protocol history
-export async function getProtocolHistory(
-  protocolName: string,
-  days: number = 7
-): Promise<any[]> {
-  try {
-    const result = await query(
-      `SELECT * FROM protocol_snapshots 
-       WHERE protocol_name = $1 
-         AND snapshot_at > NOW() - INTERVAL '${days} days'
-       ORDER BY snapshot_at DESC`,
-      [protocolName]
-    );
-    return result;
-  } catch (error) {
-    console.error("[DB] Failed to get protocol history:", error);
-    return [];
   }
 }
 

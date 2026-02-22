@@ -3,18 +3,15 @@ import { query } from "@/lib/db";
 
 export async function GET() {
   try {
-    // Get system state
     const systemResult = await query("SELECT * FROM system_state LIMIT 1");
     const system = systemResult[0] || null;
 
-    // Get recent rebalances
     const rebalancesResult = await query(
-      `SELECT * FROM rebalance_history ORDER BY created_at DESC LIMIT 5`
+      "SELECT * FROM rebalance_history ORDER BY created_at DESC LIMIT 5"
     );
 
-    // Get wallet info
     const walletResult = await query(
-      `SELECT * FROM wallet_accounts WHERE account_type = 'evm' ORDER BY created_at DESC LIMIT 1`
+      "SELECT * FROM wallet_accounts WHERE account_type = 'evm' ORDER BY created_at DESC LIMIT 1"
     );
 
     return NextResponse.json({
@@ -33,12 +30,8 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error("[Metrics] Error:", error);
-
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message,
-      },
+      { success: false, error: error.message },
       { status: 500 }
     );
   }

@@ -1,4 +1,3 @@
-// Types
 export interface Protocol {
   name: string;
   apy: number;
@@ -25,7 +24,6 @@ export interface PortfolioAllocation {
   timestamp: string;
 }
 
-// Choose the best single protocol (simple strategy)
 export function chooseBestProtocol(protocols: Protocol[]): Protocol {
   if (!protocols || protocols.length === 0) {
     throw new Error("No protocols available");
@@ -45,7 +43,6 @@ export function chooseBestProtocol(protocols: Protocol[]): Protocol {
   return best;
 }
 
-// Calculate optimal allocation across multiple protocols
 export function calculateOptimalAllocation(
   protocols: Protocol[],
   totalCapital: number,
@@ -62,7 +59,6 @@ export function calculateOptimalAllocation(
     };
   }
 
-  // Filter protocols by max risk
   const eligibleProtocols = protocols
     .filter((p) => (p.risk ?? 0) <= maxRisk)
     .map((p) => ({
@@ -82,7 +78,6 @@ export function calculateOptimalAllocation(
     };
   }
 
-  // Simple allocation: weight by adjusted yield
   const totalAdjustedYield = eligibleProtocols.reduce(
     (sum, p) => sum + (p.adjustedYield ?? 0),
     0
@@ -101,12 +96,15 @@ export function calculateOptimalAllocation(
     };
   });
 
-  // Calculate portfolio metrics
-  const expectedApy =
-    allocations.reduce((sum, a) => sum + (a.expectedYield * a.percentage) / 100, 0);
+  const expectedApy = allocations.reduce(
+    (sum, a) => sum + (a.expectedYield * a.percentage) / 100,
+    0
+  );
 
-  const totalRisk =
-    allocations.reduce((sum, a) => sum + (a.riskScore * a.percentage) / 100, 0);
+  const totalRisk = allocations.reduce(
+    (sum, a) => sum + (a.riskScore * a.percentage) / 100,
+    0
+  );
 
   return {
     totalValue: totalCapital,
@@ -117,11 +115,10 @@ export function calculateOptimalAllocation(
   };
 }
 
-// Determine if rebalance is needed
 export function shouldRebalance(
   currentProtocol: string,
   bestProtocol: Protocol,
-  minYieldImprovement: number = 0.5 // 0.5% minimum improvement
+  minYieldImprovement: number = 0.5
 ): { shouldRebalance: boolean; reason: string } {
   if (!currentProtocol || currentProtocol === "none") {
     return {

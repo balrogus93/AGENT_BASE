@@ -10,7 +10,6 @@ export interface RebalanceResult {
   timestamp: string;
 }
 
-// Execute rebalance from one protocol to another
 export async function executeRebalance(
   from: Protocol,
   to: Protocol,
@@ -21,22 +20,17 @@ export async function executeRebalance(
   try {
     console.log(`[Rebalance] ${from.name} → ${to.name}`);
 
-    // Step 1: Withdraw from current protocol
     const withdrawResult = await executeWithdraw(from, amount);
     if (!withdrawResult.success) {
       throw new Error(`Withdraw failed: ${withdrawResult.error}`);
     }
 
-    // Step 2: Deposit to new protocol
     const depositResult = await executeDeposit(to, amount);
     if (!depositResult.success) {
       throw new Error(`Deposit failed: ${depositResult.error}`);
     }
 
-    // Step 3: Log the rebalance
     await logRebalance(from.name, to.name, amount, depositResult.txHash);
-
-    // Step 4: Update system state
     await saveCurrentState(to);
 
     return {
@@ -59,37 +53,22 @@ export async function executeRebalance(
   }
 }
 
-// Execute withdraw from a protocol
 async function executeWithdraw(
   protocol: Protocol,
   amount?: number
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  // TODO: Implement actual on-chain withdraw via CDP wallet
   console.log(`[Withdraw] ${amount ?? "all"} from ${protocol.name}`);
-
-  // Mock implementation
-  return {
-    success: true,
-    txHash: `0xwithdraw_${Date.now()}`,
-  };
+  return { success: true, txHash: `0xwithdraw_${Date.now()}` };
 }
 
-// Execute deposit to a protocol
 async function executeDeposit(
   protocol: Protocol,
   amount?: number
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  // TODO: Implement actual on-chain deposit via CDP wallet
   console.log(`[Deposit] ${amount ?? "all"} to ${protocol.name}`);
-
-  // Mock implementation
-  return {
-    success: true,
-    txHash: `0xdeposit_${Date.now()}`,
-  };
+  return { success: true, txHash: `0xdeposit_${Date.now()}` };
 }
 
-// Log rebalance to database
 async function logRebalance(
   fromProtocol: string,
   toProtocol: string,
@@ -107,7 +86,6 @@ async function logRebalance(
   }
 }
 
-// Save current state to database
 export async function saveCurrentState(protocol: Protocol): Promise<void> {
   try {
     await query(
@@ -125,7 +103,6 @@ export async function saveCurrentState(protocol: Protocol): Promise<void> {
   }
 }
 
-// Get current system state
 export async function getCurrentState(): Promise<{
   currentProtocol: string;
   currentApy: number;
@@ -134,8 +111,7 @@ export async function getCurrentState(): Promise<{
 } | null> {
   try {
     const result = await query(
-      `SELECT current_protocol, current_apy, risk_score, last_rebalance 
-       FROM system_state LIMIT 1`
+      "SELECT current_protocol, current_apy, risk_score, last_rebalance FROM system_state LIMIT 1"
     );
 
     if (result.length === 0) return null;

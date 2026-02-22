@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
 
 export async function GET() {
   const checks = {
-    status: 'ok',
+    status: "ok",
     timestamp: new Date().toISOString(),
     database: false,
     environment: {
@@ -14,7 +14,7 @@ export async function GET() {
   };
 
   try {
-    await query('SELECT 1');
+    await query("SELECT 1");
     checks.database = true;
   } catch (error) {
     checks.database = false;

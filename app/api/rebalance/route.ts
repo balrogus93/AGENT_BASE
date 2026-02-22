@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAllProtocols } from "@/config/protocols";
-import { calculateRisk, assessAllProtocols } from "@/engine/riskEngine";
+import { assessAllProtocols } from "@/engine/riskEngine";
 import { chooseBestProtocol, shouldRebalance } from "@/engine/allocationEngine";
 import { executeRebalance, getCurrentState, saveCurrentState } from "@/engine/executionEngine";
 import { logAction } from "@/lib/db";
 
 export async function GET() {
   try {
-    // Step 1: Fetch all protocol data
     const protocols = await getAllProtocols();
 
     if (protocols.length === 0) {
@@ -17,22 +16,13 @@ export async function GET() {
       });
     }
 
-    // Step 2: Assess risk for all protocols
     const assessedProtocols = assessAllProtocols(protocols);
-
-    // Step 3: Find the best protocol
     const best = chooseBestProtocol(assessedProtocols);
-
-    // Step 4: Get current state
     const currentState = await getCurrentState();
     const currentProtocol = currentState?.currentProtocol ?? "none";
-
-    // Step 5: Check if rebalance is needed
     const rebalanceDecision = shouldRebalance(currentProtocol, best);
 
-    // Step 6: Execute rebalance if needed
     if (rebalanceDecision.shouldRebalance) {
-      // Find current protocol data
       const current = assessedProtocols.find((p) => p.name === currentProtocol) || {
         name: currentProtocol,
         apy: 0,
@@ -65,7 +55,6 @@ export async function GET() {
       });
     }
 
-    // No rebalance needed
     return NextResponse.json({
       success: true,
       action: "none",
@@ -85,18 +74,13 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error("[Rebalance] Error:", error);
-
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message,
-      },
+      { success: false, error: error.message },
       { status: 500 }
     );
   }
 }
 
-// POST: Force rebalance to specific protocol
 export async function POST(request: Request) {
   try {
     const body = await request.json();

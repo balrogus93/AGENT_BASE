@@ -6,12 +6,13 @@ import { formatEther } from "viem";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const address = searchParams.get("address");
+    const addressParam = searchParams.get("address");
 
-    // If no address provided, get the default agent wallet
-    let walletAddress = address;
+    let walletAddress: string;
 
-    if (!walletAddress) {
+    if (addressParam) {
+      walletAddress = addressParam;
+    } else {
       const result = await query(
         `SELECT address FROM wallet_accounts 
          WHERE account_type = 'evm' 
@@ -41,7 +42,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error("Balance error:", error);
-
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

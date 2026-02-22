@@ -1,7 +1,6 @@
 -- Schema for DeFi Auto Agent
 -- Run this in your Neon console
 
--- Wallet accounts table
 CREATE TABLE IF NOT EXISTS wallet_accounts (
   id SERIAL PRIMARY KEY,
   address VARCHAR(42) UNIQUE NOT NULL,
@@ -12,7 +11,6 @@ CREATE TABLE IF NOT EXISTS wallet_accounts (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Faucet requests log
 CREATE TABLE IF NOT EXISTS faucet_requests (
   id SERIAL PRIMARY KEY,
   address VARCHAR(42) NOT NULL,
@@ -21,7 +19,6 @@ CREATE TABLE IF NOT EXISTS faucet_requests (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- System state (for agent monitoring)
 CREATE TABLE IF NOT EXISTS system_state (
   id SERIAL PRIMARY KEY,
   current_protocol VARCHAR(100),
@@ -32,7 +29,6 @@ CREATE TABLE IF NOT EXISTS system_state (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Rebalance history
 CREATE TABLE IF NOT EXISTS rebalance_history (
   id SERIAL PRIMARY KEY,
   from_protocol VARCHAR(100),
@@ -43,7 +39,6 @@ CREATE TABLE IF NOT EXISTS rebalance_history (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Protocol snapshots (APY history)
 CREATE TABLE IF NOT EXISTS protocol_snapshots (
   id SERIAL PRIMARY KEY,
   protocol_name VARCHAR(100) NOT NULL,
@@ -54,7 +49,6 @@ CREATE TABLE IF NOT EXISTS protocol_snapshots (
   snapshot_at TIMESTAMP DEFAULT NOW()
 );
 
--- Transactions log
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL PRIMARY KEY,
   tx_hash VARCHAR(66) UNIQUE,
@@ -68,7 +62,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   confirmed_at TIMESTAMP
 );
 
--- Action logs (for debugging/monitoring)
 CREATE TABLE IF NOT EXISTS action_logs (
   id SERIAL PRIMARY KEY,
   action VARCHAR(100) NOT NULL,
@@ -76,7 +69,6 @@ CREATE TABLE IF NOT EXISTS action_logs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Portfolio snapshots
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   id SERIAL PRIMARY KEY,
   total_value DECIMAL(20, 8),
@@ -86,7 +78,6 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Create indexes
 CREATE INDEX IF NOT EXISTS idx_wallet_accounts_address ON wallet_accounts(address);
 CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(tx_hash);
 CREATE INDEX IF NOT EXISTS idx_protocol_snapshots_name ON protocol_snapshots(protocol_name);
@@ -94,7 +85,6 @@ CREATE INDEX IF NOT EXISTS idx_rebalance_history_created ON rebalance_history(cr
 CREATE INDEX IF NOT EXISTS idx_action_logs_action ON action_logs(action);
 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_created ON portfolio_snapshots(created_at);
 
--- Insert initial system state
 INSERT INTO system_state (id, current_protocol, current_apy, risk_score, total_value_locked)
 VALUES (1, 'none', 0, 0, 0)
 ON CONFLICT (id) DO NOTHING;
