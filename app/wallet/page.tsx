@@ -97,19 +97,44 @@ export default function WalletDashboard() {
       return;
     }
 
+    // Validation côté client
+    let cleanKey = privateKey.trim();
+    if (!cleanKey.startsWith("0x")) {
+      cleanKey = "0x" + cleanKey;
+    }
+    
+    if (cleanKey.length !== 66) {
+      setError(`Invalid key length. Expected 64 hex characters, got ${cleanKey.length - 2}`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     addLog("Importing wallet with private key...");
+    addLog(`Key length: ${cleanKey.length} characters`);
 
     try {
       const res = await fetch("/api/wallet/import-key", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          privateKey: privateKey,
+          privateKey: cleanKey,
           name: importName || undefined 
         }),
       });
+
+      // Vérifier le status HTTP d'abord
+      if (!res.ok) {
+        const text = await res.text();
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const errJson = JSON.parse(text);
+          errorMsg = errJson.error || errorMsg;
+        } catch {
+          errorMsg = text || errorMsg;
+        }
+        throw new Error(errorMsg);
+      }
 
       const data = await res.json();
 
@@ -124,12 +149,13 @@ export default function WalletDashboard() {
         loadAvailableWallets();
         await getBalance(data.account.address);
       } else {
-        setError(data.error);
+        setError(data.error || "Unknown error");
         addLog(`❌ Error: ${data.error}`);
       }
     } catch (err: any) {
-      setError(err.message);
-      addLog(`❌ Error: ${err.message}`);
+      const errorMsg = err.message || "Failed to import wallet";
+      setError(errorMsg);
+      addLog(`❌ Error: ${errorMsg}`);
     }
 
     setLoading(false);
