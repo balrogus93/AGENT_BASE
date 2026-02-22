@@ -6,12 +6,14 @@ import { formatEther } from "viem";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const address = searchParams.get("address");
+    const addressParam = searchParams.get("address");
 
-    // If no address provided, get the default agent wallet
-    let walletAddress = address;
+    let walletAddress: string;
 
-    if (!walletAddress) {
+    if (addressParam) {
+      walletAddress = addressParam;
+    } else {
+      // Get the default agent wallet from database
       const result = await query(
         `SELECT address FROM wallet_accounts 
          WHERE account_type = 'evm' 
