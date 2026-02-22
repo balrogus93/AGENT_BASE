@@ -1,213 +1,147 @@
-// ============================================
-// REBALANCE API
-// GET /api/rebalance - Preview rebalance actions
-// POST /api/rebalance - Execute rebalance
-// ============================================
+import { NextResponse } from "next/server";
+import { getAllProtocols } from "@/config/protocols";
+import { calculateRisk, assessAllProtocols } from "@/engine/riskEngine";
+import { chooseBestProtocol, shouldRebalance } from "@/engine/allocationEngine";
+import { executeRebalance, getCurrentState, saveCurrentState } from "@/engine/executionEngine";
+import { logAction } from "@/lib/db";
 
-import { NextRequest, NextResponse } from 'next/server';
-import { 
-  calculateOptimalAllocation, 
-  calculateRebalanceActions,
-  shouldRebalance 
-} from '@/engine/allocationEngine';
-import { executeRebalance, saveCurrentState } from '@/engine/executionEngine';
-import { logAction, getLatestPortfolio } from '@/lib/db';
-import { connectWallet, isWalletConnected, getWalletBalance } from '@/lib/wallet';
-import type { Portfolio, Allocation } from '@/lib/types';
-
-export const runtime = 'edge';
-
-// GET: Preview rebalance actions (dry run)
 export async function GET() {
   try {
-    // Get current portfolio from database
-    const savedPortfolio = await getLatestPortfolio();
-    
-    if (!savedPortfolio) {
+    // Step 1: Fetch all protocol data
+    const protocols = await getAllProtocols();
+
+    if (protocols.length === 0) {
       return NextResponse.json({
-        needsRebalance: false,
-        reason: 'No existing portfolio found. Call POST /api/allocate first.',
-        actions: []
+        success: false,
+        error: "No protocols available",
       });
     }
-    
-    // Reconstruct portfolio object
-    const currentPortfolio: Portfolio = {
-      totalValueUSD: Number(savedPortfolio.total_value_usd),
-      allocations: savedPortfolio.allocations as Allocation[],
-      expectedAPY: Number(savedPortfolio.expected_apy),
-      weightedRiskScore: Number(savedPortfolio.weighted_risk_score),
-      lastRebalance: new Date(savedPortfolio.created_at),
-      nextRebalance: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h from now
-    };
-    
-    // Calculate new optimal allocation
-    const targetPortfolio = calculateOptimalAllocation('risk-adjusted');
-    
-    // Determine if rebalance is needed
-    const needsRebalance = shouldRebalance(currentPortfolio);
-    
-    // Calculate what actions would be needed
-    const actions = calculateRebalanceActions(currentPortfolio, targetPortfolio);
-    
+
+    // Step 2: Assess risk for all protocols
+    const assessedProtocols = assessAllProtocols(protocols);
+
+    // Step 3: Find the best protocol
+    const best = chooseBestProtocol(assessedProtocols);
+
+    // Step 4: Get current state
+    const currentState = await getCurrentState();
+    const currentProtocol = currentState?.currentProtocol ?? "none";
+
+    // Step 5: Check if rebalance is needed
+    const rebalanceDecision = shouldRebalance(currentProtocol, best);
+
+    // Step 6: Execute rebalance if needed
+    if (rebalanceDecision.shouldRebalance) {
+      // Find current protocol data
+      const current = assessedProtocols.find((p) => p.name === currentProtocol) || {
+        name: currentProtocol,
+        apy: 0,
+        tvl: 0,
+        risk: 0,
+      };
+
+      const result = await executeRebalance(current, best);
+
+      await logAction("rebalance", {
+        from: current.name,
+        to: best.name,
+        reason: rebalanceDecision.reason,
+        result: result.success ? "success" : "failed",
+      });
+
+      return NextResponse.json({
+        success: result.success,
+        action: "rebalanced",
+        from: current.name,
+        to: best.name,
+        reason: rebalanceDecision.reason,
+        newPosition: {
+          protocol: best.name,
+          apy: best.apy,
+          risk: best.risk,
+          adjustedYield: best.adjustedYield,
+        },
+        txHash: result.txHash,
+      });
+    }
+
+    // No rebalance needed
     return NextResponse.json({
-      needsRebalance,
-      reason: needsRebalance ? 'Rebalance interval reached or allocation drift detected' : 'No rebalance needed yet',
-      currentPortfolio: {
-        expectedAPY: currentPortfolio.expectedAPY.toFixed(2) + '%',
-        weightedRiskScore: currentPortfolio.weightedRiskScore.toFixed(1),
-        allocationsCount: currentPortfolio.allocations.length,
-        lastRebalance: currentPortfolio.lastRebalance
+      success: true,
+      action: "none",
+      reason: rebalanceDecision.reason,
+      currentPosition: {
+        protocol: best.name,
+        apy: best.apy,
+        risk: best.risk,
+        adjustedYield: best.adjustedYield,
       },
-      targetPortfolio: {
-        expectedAPY: targetPortfolio.expectedAPY.toFixed(2) + '%',
-        weightedRiskScore: targetPortfolio.weightedRiskScore.toFixed(1),
-        allocationsCount: targetPortfolio.allocations.length
-      },
-      actions: actions.map(a => ({
-        type: a.type,
-        from: a.fromProtocol || null,
-        to: a.toProtocol || null,
-        amountUSD: a.amountUSD.toFixed(2),
-        reason: a.reason,
-        priority: a.priority
+      allProtocols: assessedProtocols.map((p) => ({
+        name: p.name,
+        apy: p.apy,
+        risk: p.risk,
+        adjustedYield: p.adjustedYield,
       })),
-      dryRun: true
     });
-    
-  } catch (error) {
-    console.error('[REBALANCE API] Error:', error);
-    
-    return NextResponse.json({
-      error: 'Failed to calculate rebalance',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+  } catch (error: any) {
+    console.error("[Rebalance] Error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message,
+      },
+      { status: 500 }
+    );
   }
 }
 
-// POST: Execute rebalance
-export async function POST(request: NextRequest) {
+// POST: Force rebalance to specific protocol
+export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const force = body.force === true;
-    const dryRun = body.dryRun === true;
-    
-    // Check wallet connection
-    if (!isWalletConnected()) {
-      const connectResult = await connectWallet();
-      
-      if (!connectResult.success) {
-        return NextResponse.json({
-          error: 'Wallet connection failed',
-          details: connectResult.error
-        }, { status: 400 });
-      }
+    const { targetProtocol } = body;
+
+    if (!targetProtocol) {
+      return NextResponse.json(
+        { success: false, error: "targetProtocol is required" },
+        { status: 400 }
+      );
     }
-    
-    // Get wallet balance
-    const balance = await getWalletBalance();
-    
-    // Get current portfolio
-    const savedPortfolio = await getLatestPortfolio();
-    
-    // Build current portfolio (or empty if first time)
-    const currentPortfolio: Portfolio = savedPortfolio ? {
-      totalValueUSD: Number(savedPortfolio.total_value_usd),
-      allocations: savedPortfolio.allocations as Allocation[],
-      expectedAPY: Number(savedPortfolio.expected_apy),
-      weightedRiskScore: Number(savedPortfolio.weighted_risk_score),
-      lastRebalance: new Date(savedPortfolio.created_at),
-      nextRebalance: new Date()
-    } : {
-      totalValueUSD: balance.balanceUSD,
-      allocations: [],
-      expectedAPY: 0,
-      weightedRiskScore: 0,
-      lastRebalance: new Date(0),
-      nextRebalance: new Date()
-    };
-    
-    // Check if rebalance is needed (unless forced)
-    if (!force && savedPortfolio && !shouldRebalance(currentPortfolio)) {
-      return NextResponse.json({
-        executed: false,
-        reason: 'Rebalance not needed yet. Use force=true to override.',
-        nextRebalance: currentPortfolio.nextRebalance
-      });
+
+    const protocols = await getAllProtocols();
+    const assessedProtocols = assessAllProtocols(protocols);
+
+    const target = assessedProtocols.find(
+      (p) => p.name.toLowerCase() === targetProtocol.toLowerCase()
+    );
+
+    if (!target) {
+      return NextResponse.json(
+        { success: false, error: `Protocol ${targetProtocol} not found` },
+        { status: 404 }
+      );
     }
-    
-    // Calculate target allocation
-    const targetPortfolio = calculateOptimalAllocation('risk-adjusted');
-    
-    // Calculate actions
-    const actions = calculateRebalanceActions(currentPortfolio, targetPortfolio);
-    
-    if (actions.length === 0) {
-      return NextResponse.json({
-        executed: false,
-        reason: 'No rebalancing actions needed',
-        portfolio: targetPortfolio
-      });
-    }
-    
-    // Log rebalance start
-    await logAction('rebalance_started', {
-      force,
-      dryRun,
-      actionsCount: actions.length,
-      walletAddress: balance.address
-    });
-    
-    // Execute or simulate
-    if (dryRun) {
-      return NextResponse.json({
-        executed: false,
-        dryRun: true,
-        wouldExecute: actions,
-        targetPortfolio: {
-          expectedAPY: targetPortfolio.expectedAPY.toFixed(2) + '%',
-          allocations: targetPortfolio.allocations
-        }
-      });
-    }
-    
-    // Execute rebalance
-    const { results, successCount, failCount } = await executeRebalance(actions);
-    
-    // Save new portfolio state
-    await saveCurrentState(targetPortfolio);
-    
+
+    const currentState = await getCurrentState();
+    const current = assessedProtocols.find(
+      (p) => p.name === currentState?.currentProtocol
+    ) || { name: "none", apy: 0, tvl: 0, risk: 0 };
+
+    const result = await executeRebalance(current, target);
+
     return NextResponse.json({
-      executed: true,
-      summary: {
-        totalActions: actions.length,
-        successful: successCount,
-        failed: failCount
-      },
-      results: results.map((r, i) => ({
-        action: actions[i].type,
-        protocol: actions[i].toProtocol || actions[i].fromProtocol,
-        success: r.success,
-        txHash: r.txHash,
-        error: r.error
-      })),
-      newPortfolio: {
-        totalValueUSD: targetPortfolio.totalValueUSD,
-        expectedAPY: targetPortfolio.expectedAPY.toFixed(2) + '%',
-        allocationsCount: targetPortfolio.allocations.length
-      }
+      success: result.success,
+      action: "forced_rebalance",
+      from: current.name,
+      to: target.name,
+      txHash: result.txHash,
+      error: result.error,
     });
-    
-  } catch (error) {
-    console.error('[REBALANCE API] Error:', error);
-    
-    await logAction('rebalance_error', {
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, false);
-    
-    return NextResponse.json({
-      error: 'Rebalance execution failed',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
   }
 }

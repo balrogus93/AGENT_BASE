@@ -68,13 +68,33 @@ CREATE TABLE IF NOT EXISTS transactions (
   confirmed_at TIMESTAMP
 );
 
+-- Action logs (for debugging/monitoring)
+CREATE TABLE IF NOT EXISTS action_logs (
+  id SERIAL PRIMARY KEY,
+  action VARCHAR(100) NOT NULL,
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Portfolio snapshots
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+  id SERIAL PRIMARY KEY,
+  total_value DECIMAL(20, 8),
+  allocations JSONB,
+  expected_apy DECIMAL(10, 4),
+  total_risk DECIMAL(5, 4),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Create indexes
 CREATE INDEX IF NOT EXISTS idx_wallet_accounts_address ON wallet_accounts(address);
 CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(tx_hash);
 CREATE INDEX IF NOT EXISTS idx_protocol_snapshots_name ON protocol_snapshots(protocol_name);
 CREATE INDEX IF NOT EXISTS idx_rebalance_history_created ON rebalance_history(created_at);
+CREATE INDEX IF NOT EXISTS idx_action_logs_action ON action_logs(action);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_created ON portfolio_snapshots(created_at);
 
 -- Insert initial system state
-INSERT INTO system_state (current_protocol, current_apy, risk_score, total_value_locked)
-VALUES ('none', 0, 0, 0)
-ON CONFLICT DO NOTHING;
+INSERT INTO system_state (id, current_protocol, current_apy, risk_score, total_value_locked)
+VALUES (1, 'none', 0, 0, 0)
+ON CONFLICT (id) DO NOTHING;
