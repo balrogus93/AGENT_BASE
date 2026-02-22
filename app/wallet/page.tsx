@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface WalletAccount {
   address: string;
   name: string;
   network: string;
-  createdAt: string;
+  createdAt?: string;
 }
 
 interface WalletInfo {
@@ -18,15 +18,44 @@ interface WalletInfo {
   faucetTx?: string;
 }
 
+interface CdpAccount {
+  address: string;
+  name?: string;
+}
+
 export default function WalletDashboard() {
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [walletName, setWalletName] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [importName, setImportName] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
+  const [availableWallets, setAvailableWallets] = useState<CdpAccount[]>([]);
+  const [showImportKey, setShowImportKey] = useState(false);
 
   const addLog = (message: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
+  };
+
+  // Charger les wallets disponibles au démarrage
+  useEffect(() => {
+    loadAvailableWallets();
+  }, []);
+
+  // Charger la liste des wallets CDP
+  const loadAvailableWallets = async () => {
+    try {
+      const res = await fetch("/api/wallet/import");
+      const data = await res.json();
+      
+      if (data.success) {
+        setAvailableWallets(data.cdpAccounts || []);
+        addLog(`Found ${data.total} existing CDP wallets`);
+      }
+    } catch (err) {
+      console.error("Failed to load wallets:", err);
+    }
   };
 
   // Créer un nouveau wallet
@@ -48,7 +77,7 @@ export default function WalletDashboard() {
         setWallet({ account: data.account });
         addLog(`✅ Wallet created: ${data.account.address}`);
         addLog(`   Name: ${data.account.name}`);
-        addLog(`   Network: ${data.account.network}`);
+        loadAvailableWallets();
       } else {
         setError(data.error);
         addLog(`❌ Error: ${data.error}`);
@@ -61,22 +90,38 @@ export default function WalletDashboard() {
     setLoading(false);
   };
 
-  // Récupérer le wallet existant
-  const getExistingWallet = async () => {
+  // Importer avec clé privée
+  const importWithPrivateKey = async () => {
+    if (!privateKey) {
+      setError("Please enter a private key");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    addLog("Fetching existing wallet...");
+    addLog("Importing wallet with private key...");
 
     try {
-      const res = await fetch("/api/wallet/create");
+      const res = await fetch("/api/wallet/import-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          privateKey: privateKey,
+          name: importName || undefined 
+        }),
+      });
+
       const data = await res.json();
 
       if (data.success) {
         setWallet({ account: data.account });
-        addLog(`✅ Wallet found: ${data.account.address}`);
-        addLog(`   Message: ${data.message}`);
-        
-        // Récupérer le solde
+        addLog(`✅ Wallet imported: ${data.account.address}`);
+        addLog(`   Name: ${data.account.name}`);
+        addLog(`   ${data.message}`);
+        setPrivateKey(""); // Clear for security
+        setImportName("");
+        setShowImportKey(false);
+        loadAvailableWallets();
         await getBalance(data.account.address);
       } else {
         setError(data.error);
@@ -90,12 +135,43 @@ export default function WalletDashboard() {
     setLoading(false);
   };
 
+  // Sélectionner un wallet depuis la liste
+  const selectWallet = async (account: CdpAccount) => {
+    setLoading(true);
+    addLog(`Selecting wallet: ${account.name || account.address}`);
+
+    try {
+      const res = await fetch("/api/wallet/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          name: account.name, 
+          address: account.address 
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setWallet({ account: data.account });
+        addLog(`✅ Wallet selected: ${data.account.address}`);
+        await getBalance(data.account.address);
+      } else {
+        addLog(`❌ Error: ${data.error}`);
+      }
+    } catch (err: any) {
+      addLog(`❌ Error: ${err.message}`);
+    }
+
+    setLoading(false);
+  };
+
   // Récupérer le solde
   const getBalance = async (address?: string) => {
     const walletAddress = address || wallet?.account.address;
     if (!walletAddress) return;
 
-    addLog(`Fetching balance for ${walletAddress}...`);
+    addLog(`Fetching balance for ${walletAddress.slice(0, 10)}...`);
 
     try {
       const res = await fetch(`/api/wallet/balance?address=${walletAddress}`);
@@ -143,7 +219,6 @@ export default function WalletDashboard() {
         addLog(`✅ Faucet success!`);
         addLog(`   TX: ${data.transactionHash}`);
         addLog(`   New balance: ${data.balance} ETH`);
-        addLog(`   Explorer: ${data.explorerUrl}`);
       } else {
         addLog(`❌ Faucet error: ${data.error}`);
       }
@@ -164,13 +239,44 @@ export default function WalletDashboard() {
     <div style={{ padding: 40, maxWidth: 900, margin: "0 auto", fontFamily: "system-ui" }}>
       <h1 style={{ marginBottom: 10 }}>🔐 CDP Wallet Dashboard</h1>
       <p style={{ color: "#666", marginBottom: 30 }}>
-        Create and manage EVM wallets on Base Sepolia testnet
+        Create, import, and manage EVM wallets on Base Sepolia testnet
       </p>
 
-      {/* Section Création */}
+      {/* Section Wallets Existants */}
+      {availableWallets.length > 0 && (
+        <div style={{ background: "#fff3cd", padding: 20, borderRadius: 8, marginBottom: 20 }}>
+          <h2 style={{ marginTop: 0, color: "#856404" }}>📂 Your CDP Wallets ({availableWallets.length})</h2>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {availableWallets.map((acc, i) => (
+              <button
+                key={i}
+                onClick={() => selectWallet(acc)}
+                disabled={loading}
+                style={{
+                  padding: "10px 15px",
+                  background: wallet?.account.address === acc.address ? "#28a745" : "#fff",
+                  color: wallet?.account.address === acc.address ? "#fff" : "#333",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{acc.name || "Unnamed"}</div>
+                <div style={{ fontSize: 12, color: wallet?.account.address === acc.address ? "#cfc" : "#666" }}>
+                  {acc.address.slice(0, 10)}...{acc.address.slice(-6)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Section Création / Import */}
       <div style={{ background: "#f5f5f5", padding: 20, borderRadius: 8, marginBottom: 20 }}>
-        <h2 style={{ marginTop: 0 }}>Create New Wallet</h2>
+        <h2 style={{ marginTop: 0 }}>➕ Create or Import Wallet</h2>
         
+        {/* Créer nouveau */}
         <div style={{ display: "flex", gap: 10, marginBottom: 15 }}>
           <input
             type="text"
@@ -185,9 +291,6 @@ export default function WalletDashboard() {
               fontSize: 16,
             }}
           />
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             onClick={createWallet}
             disabled={loading}
@@ -202,26 +305,111 @@ export default function WalletDashboard() {
               fontWeight: 600,
             }}
           >
-            {loading ? "Creating..." : "➕ Create New Wallet"}
-          </button>
-
-          <button
-            onClick={getExistingWallet}
-            disabled={loading}
-            style={{
-              padding: "12px 24px",
-              background: loading ? "#ccc" : "#28a745",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              cursor: loading ? "not-allowed" : "pointer",
-              fontSize: 16,
-              fontWeight: 600,
-            }}
-          >
-            {loading ? "Loading..." : "🔍 Get Existing Wallet"}
+            {loading ? "..." : "Create New"}
           </button>
         </div>
+
+        {/* Toggle Import avec clé privée */}
+        <button
+          onClick={() => setShowImportKey(!showImportKey)}
+          style={{
+            padding: "10px 20px",
+            background: showImportKey ? "#dc3545" : "#6c757d",
+            color: "white",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontSize: 14,
+          }}
+        >
+          {showImportKey ? "✕ Cancel Import" : "🔑 Import with Private Key"}
+        </button>
+
+        {/* Section Import avec clé privée */}
+        {showImportKey && (
+          <div style={{ 
+            marginTop: 15, 
+            padding: 20, 
+            background: "#fff", 
+            borderRadius: 8,
+            border: "2px solid #0052FF"
+          }}>
+            <h3 style={{ marginTop: 0, color: "#0052FF" }}>🔑 Import Existing Wallet</h3>
+            
+            <div style={{ 
+              background: "#ffe6e6", 
+              padding: 10, 
+              borderRadius: 6, 
+              marginBottom: 15,
+              fontSize: 13 
+            }}>
+              ⚠️ <strong>Security Warning:</strong> Your private key will be sent to CDP servers 
+              and managed by Coinbase. Only use this for testnet wallets or if you trust CDP.
+            </div>
+
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: "block", marginBottom: 5, fontWeight: 600 }}>
+                Wallet Name (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., my-imported-wallet"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 15px",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+              <label style={{ display: "block", marginBottom: 5, fontWeight: 600 }}>
+                Private Key <span style={{ color: "red" }}>*</span>
+              </label>
+              <input
+                type="password"
+                placeholder="0x... or 64 hex characters"
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 15px",
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  fontFamily: "monospace",
+                  boxSizing: "border-box",
+                }}
+              />
+              <div style={{ fontSize: 12, color: "#666", marginTop: 5 }}>
+                Format: 64 hex characters with or without 0x prefix
+              </div>
+            </div>
+            
+            <button
+              onClick={importWithPrivateKey}
+              disabled={loading || !privateKey}
+              style={{
+                padding: "12px 24px",
+                background: loading || !privateKey ? "#ccc" : "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: loading || !privateKey ? "not-allowed" : "pointer",
+                fontSize: 16,
+                fontWeight: 600,
+                width: "100%",
+              }}
+            >
+              {loading ? "Importing..." : "🔐 Import Wallet"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Erreur */}
@@ -237,20 +425,32 @@ export default function WalletDashboard() {
           }}
         >
           <strong>Error:</strong> {error}
+          <button 
+            onClick={() => setError(null)}
+            style={{ 
+              marginLeft: 10, 
+              background: "none", 
+              border: "none", 
+              cursor: "pointer",
+              color: "#cc0000"
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      {/* Informations Wallet */}
+      {/* Informations Wallet Sélectionné */}
       {wallet && (
         <div style={{ background: "#e8f5e9", padding: 20, borderRadius: 8, marginBottom: 20 }}>
-          <h2 style={{ marginTop: 0, color: "#2e7d32" }}>✅ Wallet Info</h2>
+          <h2 style={{ marginTop: 0, color: "#2e7d32" }}>✅ Active Wallet</h2>
           
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               <tr>
                 <td style={{ padding: "8px 0", fontWeight: 600, width: 120 }}>Address:</td>
                 <td style={{ padding: "8px 0" }}>
-                  <code style={{ background: "#fff", padding: "4px 8px", borderRadius: 4 }}>
+                  <code style={{ background: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: 13 }}>
                     {wallet.account.address}
                   </code>
                   <button
@@ -363,7 +563,7 @@ export default function WalletDashboard() {
             background: "#0d0d0d",
             padding: 15,
             borderRadius: 6,
-            maxHeight: 300,
+            maxHeight: 200,
             overflowY: "auto",
             fontFamily: "monospace",
             fontSize: 13,
@@ -397,24 +597,6 @@ export default function WalletDashboard() {
             Clear Logs
           </button>
         )}
-      </div>
-
-      {/* Instructions */}
-      <div style={{ marginTop: 30, padding: 20, background: "#e3f2fd", borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>📖 How to use</h3>
-        <ol style={{ lineHeight: 1.8 }}>
-          <li><strong>Create a wallet</strong> - Click "Create New Wallet" to generate a new EVM account</li>
-          <li><strong>Get testnet ETH</strong> - Click "Request Testnet ETH" to get free test tokens</li>
-          <li><strong>View on explorer</strong> - Click the explorer link to see your transactions</li>
-          <li><strong>Use in your agent</strong> - The wallet is automatically saved and used by the DeFi agent</li>
-        </ol>
-        
-        <h4>⚠️ Important Notes:</h4>
-        <ul style={{ lineHeight: 1.8 }}>
-          <li>This is on <strong>Base Sepolia testnet</strong> - tokens have no real value</li>
-          <li>Your wallet is managed by Coinbase CDP - keys are secured server-side</li>
-          <li>Faucet has rate limits - wait a few minutes between requests</li>
-        </ul>
       </div>
     </div>
   );
