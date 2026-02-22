@@ -1,6 +1,9 @@
-export const metadata = {
-  title: "DeFi Auto Agent",
-  description: "Automated DeFi Hedge Agent",
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'DeFi Agent',
+  description: 'Automated DeFi portfolio management',
 };
 
 export default function RootLayout({
@@ -10,9 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "Arial, sans-serif" }}>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
